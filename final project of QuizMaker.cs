@@ -1323,56 +1323,62 @@ public class InteractiveQuizApplication
     }
 
     private async Task ShowMainMenu()
+{
+    while (true)
     {
-        while (true)
+        Console.WriteLine("\n🎯 MAIN MENU");
+        Console.WriteLine("=============");
+        Console.WriteLine("1. 📝 View Available Quizzes");
+        Console.WriteLine("2. 🎮 Take a Quiz");
+        Console.WriteLine("3. 📊 View My Quiz History");
+        if (_authService.IsInRole(_currentUser, "Admin"))
         {
-            Console.WriteLine("\n🎯 MAIN MENU");
-            Console.WriteLine("=============");
-            Console.WriteLine("1. 📝 View Available Quizzes");
-            Console.WriteLine("2. 🎮 Take a Quiz");
-            Console.WriteLine("3. 📊 View My Quiz History");
-            if (_authService.IsInRole(_currentUser, "Admin"))
-            {
-                Console.WriteLine("4. 🔧 Admin Panel");
-                Console.WriteLine("5. 📈 View All Quiz Results (Admin)");
-            }
-            Console.WriteLine("0. 🚪 Exit");
-            Console.Write("\nSelect an option: ");
-
-            string choice = Console.ReadLine();
-            switch (choice)
-            {
-                case "1":
-                    await ViewAvailableQuizzes();
-                    break;
-                case "2":
-                    await TakeQuizInteractive();
-                    break;
-                case "3":
-                    await ViewQuizHistory();
-                    break;
-                case "4":
-                    if (_authService.IsInRole(_currentUser, "Admin"))
-                        ShowAdminPanel();
-                    else
-                        Console.WriteLine("❌ Access denied.");
-                    break;
-                case "5":
-                    if (_authService.IsInRole(_currentUser, "Admin"))
-                        await ViewAllQuizResults();
-                    else
-                        Console.WriteLine("❌ Access denied.");
-                    break;
-                case "0":
-                    Console.WriteLine("👋 Thanks for using QuizMaker!");
-                    return;
-                default:
-                    Console.WriteLine("❌ Invalid option. Please try again.");
-                    break;
-            }
+            Console.WriteLine("4. 🔧 Admin Panel");
+            Console.WriteLine("5. 📈 View All Quiz Results (Admin)");
+            Console.WriteLine("6. 🎯 Create New Quiz (Admin)");
+        }
+        Console.WriteLine("0. 🚪 Exit");
+        Console.Write("\nSelect an option: ");
+        
+        string choice = Console.ReadLine();
+        switch (choice)
+        {
+            case "1":
+                await ViewAvailableQuizzes();
+                break;
+            case "2":
+                await TakeQuizInteractive();
+                break;
+            case "3":
+                await ViewQuizHistory();
+                break;
+            case "4":
+                if (_authService.IsInRole(_currentUser, "Admin"))
+                    ShowAdminPanel();
+                else
+                    Console.WriteLine("❌ Access denied.");
+                break;
+            case "5":
+                if (_authService.IsInRole(_currentUser, "Admin"))
+                    await ViewAllQuizResults();
+                else
+                    Console.WriteLine("❌ Access denied.");
+                break;
+            case "6":
+                if (_authService.IsInRole(_currentUser, "Admin"))
+                    await CreateNewQuiz();
+                else
+                    Console.WriteLine("❌ Access denied.");
+                break;
+            case "0":
+                Console.WriteLine("👋 Thanks for using QuizMaker!");
+                return;
+            default:
+                Console.WriteLine("❌ Invalid option. Please try again.");
+                break;
         }
     }
-
+}
     private async Task ViewAvailableQuizzes()
     {
         Console.WriteLine("\n📝 AVAILABLE QUIZZES");
@@ -1713,6 +1719,7 @@ public class InteractiveQuizApplication
         Console.WriteLine("   • System Analytics");
         Console.WriteLine("   • Quiz Creation Tools");
         Console.WriteLine("   • Performance Reports");
+        Console.WriteLine("   • Quiz Creation & Management ⭐ ");
         Console.WriteLine("\n✅ Admin privileges verified!");
         Console.WriteLine("🔑 Full system access granted.");
         
@@ -1812,11 +1819,274 @@ public class InteractiveQuizApplication
         
         return title + " (" + count + " attempts)";
     }
+    
+    private Task CreateNewQuiz()
+    {
+        Console.WriteLine("\n🎯 CREATE NEW QUIZ (ADMIN ONLY)");
+        Console.WriteLine("================================");
+        
+        var dataStore = QuizDataStore.Instance;
+        
+        // Display available categories
+        Console.WriteLine("📂 Available Categories:");
+        foreach (var category in dataStore.Categories.Where(c => c.IsActive))
+        {
+            Console.WriteLine($"   {category.Id}. {category.Name} - {category.Description}");
+        }
+        Console.WriteLine();
+        
+        // Get quiz basic info
+        Console.Write("Enter Quiz Title: ");
+        string title = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            Console.WriteLine("❌ Quiz title is required!");
+            return Task.CompletedTask;
+        }
+        
+        Console.Write("Enter Quiz Description: ");
+        string description = Console.ReadLine();
+        
+        Console.Write("Enter Category ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int categoryId) || 
+            !dataStore.Categories.Any(c => c.Id == categoryId && c.IsActive))
+        {
+            Console.WriteLine("❌ Invalid category ID!");
+            return Task.CompletedTask;
+        }
+        
+        Console.Write("Enter Time Limit (minutes, 0 for no limit): ");
+        if (!int.TryParse(Console.ReadLine(), out int timeLimit) || timeLimit < 0)
+        {
+            timeLimit = 0;
+        }
+        
+        Console.Write("Make quiz public? (y/n): ");
+        bool isPublic = Console.ReadLine()?.ToLower().StartsWith("y") == true;
+        
+        // Create the quiz
+        var newQuiz = new Quiz
+        {
+            Id = dataStore.GetNextQuizId(),
+            Title = title,
+            Description = description,
+            CategoryId = categoryId,
+            CreatedById = _currentUser.Id,
+            IsPublic = isPublic,
+            TimeLimit = timeLimit,
+            CreatedAt = DateTime.UtcNow
+        };
+        
+        Console.WriteLine($"\n📝 Creating quiz: {title}");
+        Console.WriteLine("===========================");
+        
+        var questions = new List<Question>();
+        int questionCount = 1;
+        
+        while (true)
+        {
+            Console.WriteLine($"\n❓ QUESTION {questionCount}");
+            Console.WriteLine("=================");
+            
+            Console.Write("Enter question text (or 'done' to finish): ");
+            string questionText = Console.ReadLine();
+            
+            if (string.IsNullOrWhiteSpace(questionText) || questionText.ToLower() == "done")
+            {
+                if (questions.Count == 0)
+                {
+                    Console.WriteLine("❌ Quiz must have at least one question!");
+                    continue;
+                }
+                break;
+            }
+            
+            Console.WriteLine("\nQuestion Types:");
+            Console.WriteLine("1. Multiple Choice (Single Answer)");
+            Console.WriteLine("2. Multiple Choice (Multiple Answers)");
+            Console.WriteLine("3. True/False");
+            Console.WriteLine("4. Short Answer");
+            Console.Write("Select question type (1-4): ");
+            
+            if (!int.TryParse(Console.ReadLine(), out int typeChoice) || typeChoice < 1 || typeChoice > 4)
+            {
+                Console.WriteLine("❌ Invalid question type!");
+                continue;
+            }
+            
+            var questionType = (QuestionType)typeChoice;
+            
+            Console.Write("Enter points for this question (default 1): ");
+            if (!int.TryParse(Console.ReadLine(), out int points) || points < 1)
+            {
+                points = 1;
+            }
+            
+            var question = new Question
+            {
+                Id = dataStore.GetNextQuestionId(),
+                QuizId = newQuiz.Id,
+                QuestionText = questionText,
+                QuestionType = questionType,
+                Points = points,
+                OrderIndex = questionCount - 1
+            };
+            
+            // Add options based on question type
+            var options = new List<QuestionOption>();
+            
+            switch (questionType)
+            {
+                case QuestionType.TrueFalse:
+                    options.Add(new QuestionOption
+                    {
+                        Id = dataStore.GetNextOptionId(),
+                        QuestionId = question.Id,
+                        OptionText = "True",
+                        OrderIndex = 0
+                    });
+                    options.Add(new QuestionOption
+                    {
+                        Id = dataStore.GetNextOptionId(),
+                        QuestionId = question.Id,
+                        OptionText = "False",
+                        OrderIndex = 1
+                    });
+                    
+                    Console.Write("Is the correct answer True or False? (t/f): ");
+                    string tfAnswer = Console.ReadLine()?.ToLower();
+                    options[0].IsCorrect = tfAnswer?.StartsWith("t") == true;
+                    options[1].IsCorrect = tfAnswer?.StartsWith("f") == true;
+                    break;
+                    
+                case QuestionType.MultipleChoiceSingle:
+                case QuestionType.MultipleChoiceMultiple:
+                    Console.Write("How many options? (2-6): ");
+                    if (!int.TryParse(Console.ReadLine(), out int optionCount) || optionCount < 2 || optionCount > 6)
+                    {
+                        optionCount = 4;
+                    }
+                    
+                    for (int i = 0; i < optionCount; i++)
+                    {
+                        Console.Write($"Enter option {i + 1}: ");
+                        string optionText = Console.ReadLine();
+                        if (string.IsNullOrWhiteSpace(optionText))
+                        {
+                            optionText = $"Option {i + 1}";
+                        }
+                        
+                        options.Add(new QuestionOption
+                        {
+                            Id = dataStore.GetNextOptionId(),
+                            QuestionId = question.Id,
+                            OptionText = optionText,
+                            OrderIndex = i
+                        });
+                    }
+                    
+                    if (questionType == QuestionType.MultipleChoiceSingle)
+                    {
+                        Console.Write("Which option is correct? (enter number): ");
+                        if (int.TryParse(Console.ReadLine(), out int correctOption) && 
+                            correctOption > 0 && correctOption <= options.Count)
+                        {
+                            options[correctOption - 1].IsCorrect = true;
+                        }
+                    }
+                    else // Multiple choice multiple
+                    {
+                        Console.Write("Which options are correct? (enter numbers separated by commas): ");
+                        string correctAnswers = Console.ReadLine();
+                        if (!string.IsNullOrEmpty(correctAnswers))
+                        {
+                            var correctNumbers = correctAnswers.Split(',')
+                                .Select(s => s.Trim())
+                                .Where(s => int.TryParse(s, out int num) && num > 0 && num <= options.Count)
+                                .Select(s => int.Parse(s))
+                                .ToList();
+                            
+                            foreach (int num in correctNumbers)
+                            {
+                                options[num - 1].IsCorrect = true;
+                            }
+                        }
+                    }
+                    break;
+                    
+                case QuestionType.ShortAnswer:
+                    Console.WriteLine("ℹ️ Short answer question created. Answers will be manually reviewed.");
+                    break;
+            }
+            
+            question.Options = options;
+            questions.Add(question);
+            
+            Console.WriteLine($"✅ Question {questionCount} added successfully!");
+            questionCount++;
+            
+            if (questionCount > 10)
+            {
+                Console.WriteLine("⚠️ You've added 10 questions. Consider finishing the quiz.");
+            }
+            
+            Console.Write("Add another question? (y/n): ");
+            if (Console.ReadLine()?.ToLower().StartsWith("n") == true)
+            {
+                break;
+            }
+        }
+        
+        if (questions.Count == 0)
+        {
+            Console.WriteLine("❌ Quiz creation cancelled - no questions added.");
+            return Task.CompletedTask;
+        }
+        
+        // Save the quiz and questions to datastore
+        newQuiz.Questions = questions;
+        dataStore.Quizzes.Add(newQuiz);
+        dataStore.Questions.AddRange(questions);
+        
+        foreach (var question in questions)
+        {
+            dataStore.QuestionOptions.AddRange(question.Options);
+        }
+        
+        // Load relationships
+        newQuiz.Category = dataStore.Categories.FirstOrDefault(c => c.Id == newQuiz.CategoryId);
+        newQuiz.CreatedBy = _currentUser;
+        
+        // Save to file
+        dataStore.SaveData();
+        
+        Console.WriteLine("\n🎉 QUIZ CREATED SUCCESSFULLY!");
+        Console.WriteLine("==============================");
+        Console.WriteLine($"📝 Title: {newQuiz.Title}");
+        Console.WriteLine($"📂 Category: {newQuiz.Category?.Name}");
+        Console.WriteLine($"❓ Questions: {questions.Count}");
+        Console.WriteLine($"🎯 Total Points: {questions.Sum(q => q.Points)}");
+        Console.WriteLine($"⏱️ Time Limit: {(timeLimit > 0 ? timeLimit + " minutes" : "No limit")}");
+        Console.WriteLine($"🌍 Public: {(isPublic ? "Yes" : "No")}");
+        Console.WriteLine($"🆔 Quiz ID: {newQuiz.Id}");
+        Console.WriteLine("\n✅ The quiz is now available for users to take!");
+        
+        Console.WriteLine("\nPress Enter to continue...");
+        Console.ReadLine();
+        
+        return Task.CompletedTask;
+    }
+    
 }
 
 // ================================
 // UNIT TESTS FOR BUSINESS LOGIC
 // ================================
+// ================================
+// COMPLETE InteractiveQuizApplication CLASS
+// Replace your entire InteractiveQuizApplication class with this
+// ================================
+
 public class QuizServiceTests
 {
     private readonly IQuizService _quizService;
@@ -1828,7 +2098,7 @@ public class QuizServiceTests
         _quizService = new QuizService(_dataStore);
     }
     
-      public void RunAllTests()
+    public void RunAllTests()
     {
         Console.WriteLine("\n🧪 RUNNING UNIT TESTS");
         Console.WriteLine("======================");
@@ -2032,7 +2302,6 @@ public class QuizServiceTests
         }
     }
 }
-
 // ================================
 // PROGRAM ENTRY POINT
 // ================================
